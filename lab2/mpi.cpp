@@ -27,49 +27,37 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
   // zero out local C buffer to clear before accumulation
   memset(c_local, 0, num_rows * kJ * sizeof(float));
 
+  // scatter rows of A to each thread 
+  // sendbuf: a, sendcount: num_rows * kK, sendtype: MPI_FLOAT, recvbuf: a_local, recvtype: MPI_FLOAT, root: p0, comm: MPI_COMM_WORLD
+  MPI_Scatter(a, num_rows * kK, MPI_FLOAT, a_local, num_rows * kK, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  
   // on rank 0, copy the entirety of B into the global buffer to be broadcasted to all threads
   if (rank == 0) {
     memcpy(b_global, b, kK * kJ * sizeof(float));
   }
 
-  // scatter rows of A to each thread 
-  // sendbuf: a, sendcount: num_rows * kK, sendtype: MPI_FLOAT, recvbuf: a_local, recvtype: MPI_FLOAT, root: p0, comm: MPI_COMM_WORLD
-  MPI_Scatter(a, num_rows * kK, MPI_FLOAT, a_local, num_rows * kK, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  
   // broadcast entirety of B to all threads
   // sendbuf: b, sendcount: kK * kJ, sendtype: MPI_FLOAT, root: p0, comm: MPI_COMM_WORLD
   MPI_Bcast(b_global, kK * kJ, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-  for (int c_i = 0; c_i < num_rows; c_i += BLOCK_SIZE) {
-    for (int c_j = 0; c_j < kJ; c_j += BLOCK_SIZE) {
-      // in a thread: working on block (c_i, c_j) of C
+  // iterate blockwise through col of A and rows of B
+  for (int kk = 0; kk < kK; kk += BLOCK_SIZE) {
+    // iterate blockwise through rows of A and C 
+    for (int ii = 0; ii < num_rows; ii += BLOCK_SIZE) {
+      // iterate through kk block (col of A and row of B)
+      for (int k = kk; k < kk + BLOCK_SIZE; k++) {
+        // iterate through ii block (rows of A and C)
+        for (int i = ii; i < ii + BLOCK_SIZE; i++) {
+          // cache values of A that stay the same in the j loop
+          float a_i_k = a_local[i * kK + k]; // access a_local as a 1D array, calculating the offset for row i and column k
 
-      int num_blocks = kK / BLOCK_SIZE;
+          // pointers for rows for the j loop to utilize for better cache performance
+          float* c_row = &c_local[i * kJ]; 
+          const float* b_row = &b_global[k * kJ];
 
-      // iterate horizontally through A blocks & vertically through B blocks 
-      // block offset is calculated to add to the k dimensions of A and B
-      for (int block_iter = 0; block_iter < num_blocks; block_iter++) {
-        int block_offset = block_iter * BLOCK_SIZE;
-
-        // iterate through the block of A and B, and update the block of C
-        for (int i = 0; i < BLOCK_SIZE; i += 2) { // unroll the i loop by 2
-          for (int k = 0; k < BLOCK_SIZE; k++) {
-
-            // hoist two values of A out of the innermost loop since it doesn't change across j
-            const float a_i0_k = a_local[(c_i + i) * kK + (k + block_offset)];
-            const float a_i1_k = a_local[(c_i + i + 1) * kK + (k + block_offset)];
-
-            // utilize row pointers for each c row being calculated at column j
-            float* c_row0 = &c_local[(c_i + i) * kJ + c_j];
-            float* c_row1 = &c_local[(c_i + i + 1) * kJ + c_j];
-            const float* b_row = &b_global[(k + block_offset) * kJ + c_j];
-
-            for (int j = 0; j < BLOCK_SIZE; j++) {
-              // one load of b_row[j] feeds two updates
-              float b_val = b_row[j];
-              c_row0[j] += a_i0_k * b_val;
-              c_row1[j] += a_i1_k * b_val;
-            }
+          // iterate through column of B and C 
+          for (int j = 0; j < kJ; j++) {
+            c_row[j] += a_i_k * b_row[j];
           }
         }
       }
