@@ -40,14 +40,14 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
   // sendbuf: b, sendcount: kK * kJ, sendtype: MPI_FLOAT, root: p0, comm: MPI_COMM_WORLD
   MPI_Bcast(b_global, kK * kJ, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-  // iterate blockwise through col of A and rows of B
-  for (int kk = 0; kk < kK; kk += BLOCK_SIZE) {
-    // iterate blockwise through rows of A and C 
-    for (int ii = 0; ii < num_rows; ii += BLOCK_SIZE) {
-      // iterate through kk block (col of A and row of B)
-      for (int k = kk; k < kk + BLOCK_SIZE; k++) {
-        // iterate through ii block (rows of A and C)
-        for (int i = ii; i < ii + BLOCK_SIZE; i++) {
+  // iterate blockwise through rows of A and C 
+  for (int ii = 0; ii < num_rows; ii += BLOCK_SIZE) {
+    // iterate blockwise through col of A and rows of B
+    for (int kk = 0; kk < kK; kk += BLOCK_SIZE) {
+      // iterate through ii block (rows of A and C)
+      for (int i = ii; i < ii + BLOCK_SIZE; i++) {
+        // iterate through kk block (col of A and row of B)
+        for (int k = kk; k < kk + BLOCK_SIZE; k++) {
           // cache values of A that stay the same in the j loop
           float a_i_k = a_local[i * kK + k]; // access a_local as a 1D array, calculating the offset for row i and column k
 
