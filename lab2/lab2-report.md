@@ -1,0 +1,3 @@
+- MPI iteration over rows of C instead of checkerboard 
+    - simpler, only requires one scatter bcast and gather
+    - row major ordering
