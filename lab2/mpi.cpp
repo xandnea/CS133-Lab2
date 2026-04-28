@@ -41,23 +41,25 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
   MPI_Bcast(b_global, kK * kJ, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
   // iterate blockwise through rows of A and C 
-  for (int ii = 0; ii < num_rows; ii += BLOCK_SIZE) {
-    // iterate blockwise through col of A and rows of B
-    for (int kk = 0; kk < kK; kk += BLOCK_SIZE) {
-      // iterate through ii block (rows of A and C)
-      for (int i = ii; i < ii + BLOCK_SIZE; i++) {
-        // iterate through kk block (col of A and row of B)
-        for (int k = kk; k < kk + BLOCK_SIZE; k++) {
-          // cache values of A that stay the same in the j loop
-          float a_i_k = a_local[i * kK + k]; // access a_local as a 1D array, calculating the offset for row i and column k
+  for (int ii = 0; ii < num_rows; ii += 64) {
+    // iterate blockwise through columns of B and C
+    for (int jj = 0; jj < kJ; jj += 1024) {
+      // iterate blockwise through col of A and rows of B
+      for (int kk = 0; kk < kK; kk += 4) {
+        // iterate through ii block (rows of A and C)
+        for (int i = ii; i < ii + 64; i++) {
+          // iterate through kk block (col of A and row of B)
+          for (int j = jj; j < jj + 1024; j++) {
 
-          // pointers for rows for the j loop to utilize for better cache performance
-          float* c_row = &c_local[i * kJ]; 
-          const float* b_row = &b_global[k * kJ];
+            // cache local pointers for element of C, row of A, and column of B
+            float* c_ij = &c_local[i * kJ + j];
+            float* a_row = &a_local[i * kK];
+            const float* b_col = &b_global[j];
 
-          // iterate through column of B and C 
-          for (int j = 0; j < kJ; j++) {
-            c_row[j] += a_i_k * b_row[j];
+            // iterate through column of B and C 
+            for (int k = kk; k < kk + 4; k++) {
+              *c_ij += a_row[k] * b_col[k * kJ];
+            }
           }
         }
       }
