@@ -1,6 +1,7 @@
 // Header inclusions, if any...
 
 #include <mpi.h>
+#include <string.h>
 
 #include "lib/gemm.h"
 #include "lib/common.h"
@@ -8,7 +9,7 @@
 // with lab2::aligned_alloc(...)
 
 // Using declarations, if any...
-#define BLOCK_SIZE 128
+#define BLOCK_SIZE 64
 
 void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[kI][kJ]) {
   int rank, size;
@@ -19,12 +20,17 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
   const int num_rows = kI / size;
 
   // allocate local buffers for processes to hold their factor rows of A, entirety of B, and the product rows of C
-  float *a_local = (float *)lab2::aligned_alloc(num_rows * kK * sizeof(float));
-  float *b_global = (float *)lab2::aligned_alloc(kK * kJ * sizeof(float));
-  float *c_local = (float *)lab2::aligned_alloc(num_rows * kJ * sizeof(float));
+  float *a_local = (float *)lab2::aligned_alloc(64, num_rows * kK * sizeof(float)); // align to 64 bytes for better cache performance
+  float *b_global = (float *)lab2::aligned_alloc(64, kK * kJ * sizeof(float));
+  float *c_local = (float *)lab2::aligned_alloc(64, num_rows * kJ * sizeof(float));
 
   // zero out local C buffer to clear before accumulation
   memset(c_local, 0, num_rows * kJ * sizeof(float));
+
+  // on rank 0, copy the entirety of B into the global buffer to be broadcasted to all threads
+  if (rank == 0) {
+    memcpy(b_global, b, kK * kJ * sizeof(float));
+  }
 
   // scatter rows of A to each thread 
   // sendbuf: a, sendcount: num_rows * kK, sendtype: MPI_FLOAT, recvbuf: a_local, recvtype: MPI_FLOAT, root: p0, comm: MPI_COMM_WORLD
@@ -32,11 +38,13 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
   
   // broadcast entirety of B to all threads
   // sendbuf: b, sendcount: kK * kJ, sendtype: MPI_FLOAT, root: p0, comm: MPI_COMM_WORLD
-  MPI_Bcast(b, kK * kJ, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(b_global, kK * kJ, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-  for (int c_i = 0; c_i < num_rows; c_i += 64) {
-    for (int c_j = 0; c_j < kJ; c_j += 1024) {
+  for (int c_i = 0; c_i < num_rows; c_i += BLOCK_SIZE) {
+    for (int c_j = 0; c_j < kJ; c_j += BLOCK_SIZE) {
       // in a thread: working on block (c_i, c_j) of C
+
+      int num_blocks = kK / BLOCK_SIZE;
 
       // iterate horizontally through A blocks & vertically through B blocks 
       // block offset is calculated to add to the k dimensions of A and B
