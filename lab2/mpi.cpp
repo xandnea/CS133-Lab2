@@ -37,6 +37,7 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
   // on rank 0, copy the entirety of B into the global buffer to be broadcasted to all threads
   if (rank == 0) {
     memcpy(b_global, b, kK * kJ * sizeof(float));
+    //printf("Rows per process: %d, num processes: %d\n", num_rows, size);
   }
 
   // broadcast entirety of B to all threads
