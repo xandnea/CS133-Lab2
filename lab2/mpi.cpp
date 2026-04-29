@@ -12,7 +12,7 @@
 #define BLOCK_SIZE 64
 #define BI_SIZE 64
 #define BJ_SIZE 1024
-#define BK_SIZE 4
+#define BK_SIZE 8
 
 void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[kI][kJ]) {
   int rank, size;
