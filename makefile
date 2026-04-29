@@ -16,7 +16,7 @@ REQUIRED_FILES = mpi.cpp lab2-report.pdf
 np ?= 4
 
 test: gemm
-	mpiexec -np $(np) ./$^
+	mpiexec --oversubscribe -np $(np) ./$^
 
 gemm: $(SRCS)
 	$(CXX) $(CXXFLAGS) $(LAB2_CXX_FLAGS) -o $@ $(filter %.cpp %.a %.o, $^)
@@ -26,5 +26,5 @@ clean:
 
 
 include ../common/makefile.inc
-CXX = MPICH_CXX=$(MPICH_CXX) mpicxx  # specify your compiler here
+CXX = MPICH_CXX=$(MPICH_CXX) mpicxx.mpich  # specify your compiler here
 LDFLAGS +=  # specify your library linking options here
