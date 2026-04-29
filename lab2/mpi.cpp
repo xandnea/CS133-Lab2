@@ -10,6 +10,9 @@
 
 // Using declarations, if any...
 #define BLOCK_SIZE 64
+#define BI_SIZE 64
+#define BJ_SIZE 1024
+#define BK_SIZE 4
 
 void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[kI][kJ]) {
   int rank, size;
@@ -41,25 +44,25 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
   MPI_Bcast(b_global, kK * kJ, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
   // iterate blockwise through rows of A and C 
-  for (int ii = 0; ii < num_rows; ii += 64) {
+  for (int ii = 0; ii < num_rows; ii += BI_SIZE) {
     // iterate blockwise through columns of B and C
-    for (int jj = 0; jj < kJ; jj += 1024) {
+    for (int jj = 0; jj < kJ; jj += BJ_SIZE) {
       // iterate blockwise through col of A and rows of B
-      for (int kk = 0; kk < kK; kk += 4) {
+      for (int kk = 0; kk < kK; kk += BK_SIZE) {
         // iterate through ii block (rows of A and C)
-        for (int i = ii; i < ii + 64; i++) {
+        for (int i = ii; i < ii + BI_SIZE; i++) {
           // iterate through kk block (col of A and row of B)
-          for (int j = jj; j < jj + 1024; j++) {
+          for (int j = jj; j < jj + BJ_SIZE; j++) {
 
             // cache local pointers for element of C, row of A, and column of B
-            float* c_ij = &c_local[i * kJ + j];
+            float c_ij = c_local[i * kJ + j];
             float* a_row = &a_local[i * kK];
-            const float* b_col = &b_global[j];
 
             // iterate through column of B and C 
-            for (int k = kk; k < kk + 4; k++) {
-              *c_ij += a_row[k] * b_col[k * kJ];
+            for (int k = kk; k < kk + BK_SIZE; k++) {
+              c_ij += a_row[k] * b_global[k * kJ + j];
             }
+            c_local[i * kJ + j] = c_ij;
           }
         }
       }
