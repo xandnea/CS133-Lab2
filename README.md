@@ -52,7 +52,6 @@ The following results were obtained on the **m5.2xlarge** AWS instance:
 | $1024^3$     | 68.7963  | 0.03121  | C                 |
 | $2048^3$     | 88.4427  | 0.1942   | B                 |
 | $4096^3$     | 137.0760 | 1.0026   | **A**             |
-|--------------------------------------------------------|
 
 **Performance Range achieved: A**
 
