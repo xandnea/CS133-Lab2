@@ -51,13 +51,18 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
       // iterate blockwise through col of A and rows of B
       for (int kk = 0; kk < kK; kk += BK_SIZE) {
         // iterate through ii block (rows of A and C)
-        for (int i = ii; i < ii + BI_SIZE; i+=2) {
+        for (int i = ii; i < ii + BI_SIZE; i+=4) { // unroll by 4 for better instruction level parallelism
 
           // cache local pointer for current row(s) of A and C
           float* a_row0 = &a_local[i * kK];
-          float* c_row0 = &c_local[i * kJ];
           float* a_row1 = &a_local[(i + 1) * kK];
+          float* a_row2 = &a_local[(i + 2) * kK];
+          float* a_row3 = &a_local[(i + 3) * kK];
+
+          float* c_row0 = &c_local[i * kJ];
           float* c_row1 = &c_local[(i + 1) * kJ];
+          float* c_row2 = &c_local[(i + 2) * kJ];
+          float* c_row3 = &c_local[(i + 3) * kJ];
 
           // iterate through jj block (cols of B and C)
           for (int j = jj; j < jj + BJ_SIZE; j++) {
@@ -65,16 +70,22 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
             // cache local pointers for element of C
             float c_ij_reg0 = c_local[i * kJ + j];
             float c_ij_reg1 = c_local[(i + 1) * kJ + j];
+            float c_ij_reg2 = c_local[(i + 2) * kJ + j];
+            float c_ij_reg3 = c_local[(i + 3) * kJ + j];
 
             // iterate through kk block (col of A and row of B) 
             for (int k = kk; k < kk + BK_SIZE; k++) {
               c_ij_reg0 += a_row0[k] * b_global[k * kJ + j];
               c_ij_reg1 += a_row1[k] * b_global[k * kJ + j];
+              c_ij_reg2 += a_row2[k] * b_global[k * kJ + j];
+              c_ij_reg3 += a_row3[k] * b_global[k * kJ + j];
             }
 
             // write back to local C buffer
             c_row0[j] = c_ij_reg0;
             c_row1[j] = c_ij_reg1;
+            c_row2[j] = c_ij_reg2;
+            c_row3[j] = c_ij_reg3;
           }
         }
       }
