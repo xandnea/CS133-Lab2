@@ -12,7 +12,7 @@
 #define BLOCK_SIZE 64
 #define BI_SIZE 64
 #define BJ_SIZE 1024
-#define BK_SIZE 8
+#define BK_SIZE 4 // 4 seems to work better than 8
 
 void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[kI][kJ]) {
   int rank, size;
@@ -37,7 +37,7 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
   // on rank 0, copy the entirety of B into the global buffer to be broadcasted to all threads
   if (rank == 0) {
     memcpy(b_global, b, kK * kJ * sizeof(float));
-    //printf("Rows per process: %d, num processes: %d\n", num_rows, size);
+    //printf("Rows per processor: %d, Num processors: %d\n", num_rows, size);
   }
 
   // broadcast entirety of B to all threads
@@ -53,45 +53,23 @@ void GemmParallelBlocked(const float a[kI][kK], const float b[kK][kJ], float c[k
         // iterate through ii block (rows of A and C)
         for (int i = ii; i < ii + BI_SIZE; i++) {
 
-          // cache local pointer for row of A
+          // cache local pointer for current row of A and C
           float* a_row = &a_local[i * kK];
           float* c_row = &c_local[i * kJ];
 
-          // iterate through kk block (col of A and row of B)
-          for (int j = jj; j < jj + BJ_SIZE; j+=8) {
+          // iterate through jj block (cols of B and C)
+          for (int j = jj; j < jj + BJ_SIZE; j++) {
 
-            // cache registers for c values 
-            float c0 = c_row[j];
-            float c1 = c_row[j + 1];
-            float c2 = c_row[j + 2];
-            float c3 = c_row[j + 3];
-            float c4 = c_row[j + 4];
-            float c5 = c_row[j + 5];
-            float c6 = c_row[j + 6];
-            float c7 = c_row[j + 7];
+            // cache local pointers for element of C
+            float c_ij_reg = c_local[i * kJ + j];
 
-            // iterate through column of B and C 
+            // iterate through kk block (col of A and row of B) 
             for (int k = kk; k < kk + BK_SIZE; k++) {
-              float a_ik = a_row[k];
-              const float* b_row = &b_global[k * kJ + j];
-
-              c0 += a_ik * b_row[0];
-              c1 += a_ik * b_row[1];
-              c2 += a_ik * b_row[2];
-              c3 += a_ik * b_row[3];
-              c4 += a_ik * b_row[4];
-              c5 += a_ik * b_row[5];
-              c6 += a_ik * b_row[6];
-              c7 += a_ik * b_row[7];
+              c_ij_reg += a_row[k] * b_global[k * kJ + j];
             }
-            c_row[j] = c0;
-            c_row[j + 1] = c1;
-            c_row[j + 2] = c2;
-            c_row[j + 3] = c3;
-            c_row[j + 4] = c4;
-            c_row[j + 5] = c5;
-            c_row[j + 6] = c6;
-            c_row[j + 7] = c7;
+
+            // write back to local C buffer
+            c_row[j] = c_ij_reg;
           }
         }
       }
